@@ -1,0 +1,16 @@
+{
+    "configurations": [
+        {
+            "name": "default",
+            "includePath": [
+                "${workspaceFolder}/**"
+            ],
+            "defines": [
+                "VM",
+                "USERPROG",
+                "FILESYS"
+            ]
+        }
+    ],
+    "version": 4
+}
