@@ -66,11 +66,10 @@ struct page *spt_find_page(struct supplemental_page_table *spt, void *va) {
   if (!is_user_vaddr(va)) return NULL;
 
   struct page key;
-  memset(&key, 0, sizeof key);
 
   key.va = pg_round_down(va);
-  struct hash_elem *he = hash_find(&spt->hash, &key.hash_elem);
-  return he ? hash_entry(he, struct page, hash_elem) : NULL;
+  struct hash_elem *he = hash_find(&spt->hash_table, &key.hash_elem);
+  return (he != NULL) ? hash_entry(he, struct page, hash_elem) : NULL;
 }
 
 /* Insert PAGE into spt with validation. */
@@ -80,7 +79,7 @@ bool spt_insert_page(struct supplemental_page_table *spt UNUSED, struct page *pa
   ASSERT(spt != NULL && page != NULL);
   ASSERT(page->va == pg_round_down(page->va));
 
-  succ = (hash_insert(&spt->hash, &page->hash_elem) == NULL);
+  succ = (hash_insert(&spt->hash_table, &page->hash_elem) == NULL);
   return succ;
 }
 
@@ -114,12 +113,12 @@ static struct frame *vm_get_frame(void) {
   struct frame *frame = NULL;
   /* TODO: Fill this function. */
 
-  int8_t *kaddr = palloc_get_page(PAL_USER | PAL_ZERO);
+  int8_t *kaddr = palloc_get_page(PAL_USER);
   if (kaddr == NULL) {
     PANIC("vm_get_frame: palloc_get_page(PAL_USER) failed (todo: eviction)");
   }
   if ((frame = malloc(sizeof *frame)) == NULL) {
-    PANIC("vm_get_frame:  malloc(sizeof *frame) failed (todo: eviction)");
+    PANIC("vm_get_frame:  malloc(sizeof *frame) failed");
   }
 
   frame->kva = kaddr;
@@ -200,7 +199,7 @@ static bool less_func(const struct hash_elem *a, const struct hash_elem *b, void
 
 /* Initialize new supplemental page table */
 void supplemental_page_table_init(struct supplemental_page_table *spt UNUSED) {
-  hash_init(spt->hash, hash_func, less_func, NULL);
+  hash_init(spt->hash_table, hash_func, less_func, NULL);
 }
 
 /* Copy supplemental page table from src to dst */
