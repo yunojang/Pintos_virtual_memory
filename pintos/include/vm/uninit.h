@@ -1,11 +1,8 @@
 #ifndef VM_UNINIT_H
 #define VM_UNINIT_H
-#include "vm/vm.h"
+#include "vm/vm_types.h"
 
-struct page;
 enum vm_type;
-
-typedef bool vm_initializer(struct page *, void *aux);
 
 /* Uninitlialized page. The type for implementing the
  * "Lazy loading". */

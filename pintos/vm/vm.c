@@ -55,12 +55,15 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage, bool writabl
      * TODO: should modify the field after calling the uninit_new. */
 
     struct page *page = malloc(sizeof *page);
+    page->writable = writable;
     /* TODO: Insert the page into the spt. */
     if (type == VM_ANON) {
       uninit_new(page, upage, init, type, aux, anon_initializer);
     } else if (type == VM_FILE) {
       uninit_new(page, upage, init, type, aux, file_backed_initializer);
     }
+
+    spt_insert_page(spt, page);
   }
 err:
   return false;
@@ -148,6 +151,17 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED, bool us
   struct page *page = NULL;
   /* TODO: Validate the fault */
   /* TODO: Your code goes here */
+  if (!user) return false;                                 // 유저 모드에서만 처리
+  if (addr == NULL || !is_user_vaddr(addr)) return false;  // addr valid - 유저 VA가 아닐때
+  if (!not_present) return false;                          // 보호 위반 여부
+
+  // void *va = pg_round_down(addr);
+  page = spt_find_page(&thread_current()->spt, addr);
+  if (!page) return false;  // SPT에 페이지 없음
+
+  //  스택 성장 처리
+
+  if (write && !page->writable) return false;  // write 동작인데 페이지가 지원안할 때
 
   return vm_do_claim_page(page);
 }
