@@ -584,7 +584,7 @@ static bool load(const char **argv, struct intr_frame *if_) {
   free(moved_argv_ptr);
 done:
   /* We arrive here whether the load is successful or not. */
-  file_close(file);
+  // file_close(file);
   return success;
 }
 

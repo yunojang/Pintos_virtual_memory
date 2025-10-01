@@ -55,7 +55,6 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage, bool writabl
      * TODO: should modify the field after calling the uninit_new. */
 
     struct page *page = malloc(sizeof *page);
-    page->writable = writable;
     /* TODO: Insert the page into the spt. */
     if (VM_TYPE(type) == VM_ANON) {
       uninit_new(page, upage, init, type, aux, anon_initializer);
@@ -65,6 +64,7 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage, bool writabl
       return false;
     }
 
+    page->writable = writable;
     spt_insert_page(spt, page);
 
     return true;
@@ -160,8 +160,8 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED, bool us
   if (addr == NULL || !is_user_vaddr(addr)) return false;  // addr valid - 유저 VA가 아닐때
   if (!not_present) return false;                          // 보호 위반 여부
 
-  // void *va = pg_round_down(addr);
-  page = spt_find_page(&thread_current()->spt, addr);
+  void *va = pg_round_down(addr);
+  page = spt_find_page(&thread_current()->spt, va);
   if (!page) return false;  // SPT에 페이지 없음
 
   //  스택 성장 처리
