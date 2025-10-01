@@ -786,7 +786,7 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage, uint32_t 
 
 /* Create a PAGE of stack at the USER_STACK. Return true on success. */
 static bool setup_stack(struct intr_frame *if_) {
-  bool success = false;
+  // bool success = true;
   void *stack_bottom = (void *)(((uint8_t *)USER_STACK) - PGSIZE);
 
   /* TODO: Map the stack on stack_bottom and claim the page immediately.
@@ -801,11 +801,12 @@ static bool setup_stack(struct intr_frame *if_) {
   // success = spt_insert_page(&thread_current()->spt, stack_page);
   // if (!success) goto done;
 
-  if (vm_alloc_page_with_initializer(VM_ANON | VM_MARKER_0, stack_bottom, true, NULL, NULL)) {
+  if (!vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true)) {
+    // if (!vm_alloc_page_with_initializer(VM_ANON, stack_bottom, true, NULL, NULL)) {
     return false;
   }
 
-  if (vm_claim_page(stack_bottom)) {
+  if (!vm_claim_page(stack_bottom)) {
     return false;
   }
 
@@ -813,6 +814,6 @@ static bool setup_stack(struct intr_frame *if_) {
   // if (!success) goto done;
 
   if_->rsp = USER_STACK;
-  return success;
+  return true;
 }
 #endif /* VM */
