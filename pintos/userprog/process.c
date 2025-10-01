@@ -349,8 +349,14 @@ void process_exit(void) {
    * TODO: project2/process_termination.html).
    * TODO: We recommend you to implement process resource cleanup here. */
 
-  process_cleanup();
   struct thread *curr = thread_current();
+  if (curr->running_file) {
+    file_allow_write(curr->running_file);
+    file_close(curr->running_file);
+    curr->running_file = NULL;
+  }
+  process_cleanup();
+
   for (int i = 0; i <= curr->fd_max; i++) {
     if (!curr->fd_table[i]) continue;
     if (curr->fd_table[i] == get_std_in() ||
@@ -361,6 +367,7 @@ void process_exit(void) {
           i);  // dup2라면 dup_count만 깎을 테고, 아니라면 file_close 해 줌 마지막 NULL 처리도 해줌
     }
   }
+
   free(curr->fd_table);  // fd_table 껍데기 반환
 
   if (!strcmp("main", curr->name)) {  // main 쓰레드 종료할때 표준 입출력 주소 반환
@@ -487,6 +494,8 @@ static bool load(const char **argv, struct intr_frame *if_) {
     printf("load: %s: open failed\n", file_name);
     goto done;
   }
+  t->running_file = file;
+  file_deny_write(file);
 
   /* Read and verify executable header. */
   if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr ||
@@ -780,6 +789,7 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage, uint32_t 
     read_bytes -= page_read_bytes;
     zero_bytes -= page_zero_bytes;
     upage += PGSIZE;
+    ofs += page_read_bytes;
   }
   return true;
 }

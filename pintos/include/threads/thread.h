@@ -122,6 +122,7 @@ struct thread {
   struct file **fd_table;  // 파일 디스크립터 테이블
   size_t fd_max;           //현재 등록되어 있는 fd 중 가장 큰 값
   size_t fd_size;          // 현재 fd table의 크기
+  struct file *running_file;
 
 #ifdef USERPROG
   /* Owned by userprog/process.c. */
