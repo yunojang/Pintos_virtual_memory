@@ -219,7 +219,10 @@ static bool less_func(const struct hash_elem *a, const struct hash_elem *b, void
 
 /* Initialize new supplemental page table */
 void supplemental_page_table_init(struct supplemental_page_table *spt UNUSED) {
-  hash_init(spt->hash_table, hash_func, less_func, NULL);
+  ASSERT(spt != NULL);
+
+  // spt->hash_table = malloc(sizeof *spt->hash_table);
+  hash_init(&spt->hash_table, hash_func, less_func, NULL);
 }
 
 /* Copy supplemental page table from src to dst */
