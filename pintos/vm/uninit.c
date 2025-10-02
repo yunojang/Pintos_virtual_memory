@@ -66,7 +66,18 @@ static bool uninit_initialize(struct page *page, void *kva) {
  * exit, which are never referenced during the execution.
  * PAGE will be freed by the caller. */
 static void uninit_destroy(struct page *page) {
-  struct uninit_page *uninit UNUSED = &page->uninit;
   /* TODO: Fill this function.
    * TODO: If you don't have anything to do, just return. */
+
+  struct uninit_page *uninit UNUSED = &page->uninit;
+  enum vm_type type = VM_TYPE(uninit->type);
+
+  free(uninit->aux);
+
+  switch (type) {
+    case VM_ANON:
+      break;
+    default:
+      break;
+  }
 }

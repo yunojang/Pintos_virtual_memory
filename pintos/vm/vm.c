@@ -6,6 +6,7 @@
 #include "lib/kernel/hash.h"
 #include "threads/malloc.h"
 #include "threads/mmu.h"
+#include "userprog/process.h"
 #include "vm/inspect.h"
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
@@ -231,12 +232,62 @@ void supplemental_page_table_init(struct supplemental_page_table *spt UNUSED) {
   hash_init(&spt->hash_table, hash_func, less_func, NULL);
 }
 
+// void uninit_page_copy() {}
+// void anon_page_copy() {}
+
 /* Copy supplemental page table from src to dst */
 bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED,
-                                  struct supplemental_page_table *src UNUSED) {}
+                                  struct supplemental_page_table *src UNUSED) {
+  bool succ = false;
+  ASSERT(&thread_current()->spt == dst);  // dst가 현재 쓰레드여야함
+
+  struct hash_iterator i;
+  hash_first(&i, &src->hash_table);
+
+  while (hash_next(&i)) {
+    struct page *src_page = hash_entry(hash_cur(&i), struct page, hash_elem);
+    enum vm_type type = VM_TYPE(src_page->operations->type);
+    bool writable = src_page->writable;
+    struct uninit_page uninit = src_page->uninit;
+    struct load_aux *old_aux = src_page->uninit.aux;
+    void *va = src_page->va;
+    ASSERT(va == pg_round_down(va));
+
+    switch (type) {
+      case VM_UNINIT:
+        struct load_aux *new_aux = malloc(sizeof *new_aux);
+        *new_aux = *old_aux;
+        new_aux->file = file_reopen(old_aux->file);  // reopen(pos 복사안함) <-> duplicate
+        if (!vm_alloc_page_with_initializer(uninit.type, va, writable, uninit.init, new_aux)) {
+          return false;
+        }
+        succ = vm_claim_page(va);  // 즉시 클레임
+        break;
+      case VM_ANON:
+        bool is_in = src_page->frame != NULL;
+
+        if (!vm_alloc_page(VM_ANON, va, writable)) {
+          return false;
+        }
+        succ = vm_claim_page(va);
+        memcpy(spt_find_page(dst, va)->frame->kva, src_page->frame->kva, PGSIZE);
+        break;
+      default:
+        break;
+    }
+  }
+
+  return succ;
+}
+
+static void page_destory(struct hash_elem *e, void *aux) {
+  struct page *p = hash_entry(e, struct page, hash_elem);
+  destroy(p);
+}
 
 /* Free the resource hold by the supplemental page table */
 void supplemental_page_table_kill(struct supplemental_page_table *spt UNUSED) {
   /* TODO: Destroy all the supplemental_page_table hold by thread and
    * TODO: writeback all the modified contents to the storage. */
+  hash_clear(spt, page_destory);
 }

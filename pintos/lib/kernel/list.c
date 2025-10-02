@@ -32,10 +32,13 @@
    elements allows us to do a little bit of checking on some
    operations, which can be valuable.) */
 
-static bool is_sorted(struct list_elem *a, struct list_elem *b, list_less_func *less, void *aux) UNUSED;
+static bool is_sorted(struct list_elem *a, struct list_elem *b, list_less_func *less,
+                      void *aux) UNUSED;
 
 /* Returns true if ELEM is a head, false otherwise. */
-static inline bool is_head(struct list_elem *elem) { return elem != NULL && elem->prev == NULL && elem->next != NULL; }
+static inline bool is_head(struct list_elem *elem) {
+  return elem != NULL && elem->prev == NULL && elem->next != NULL;
+}
 
 /* Returns true if ELEM is an interior element,
    false otherwise. */
@@ -44,7 +47,9 @@ static inline bool is_interior(struct list_elem *elem) {
 }
 
 /* Returns true if ELEM is a tail, false otherwise. */
-static inline bool is_tail(struct list_elem *elem) { return elem != NULL && elem->prev != NULL && elem->next == NULL; }
+static inline bool is_tail(struct list_elem *elem) {
+  return elem != NULL && elem->prev != NULL && elem->next == NULL;
+}
 
 /* Initializes LIST as an empty list. */
 void list_init(struct list *list) {
@@ -171,11 +176,15 @@ void list_splice(struct list_elem *before, struct list_elem *first, struct list_
 
 /* Inserts ELEM at the beginning of LIST, so that it becomes the
    front in LIST. */
-void list_push_front(struct list *list, struct list_elem *elem) { list_insert(list_begin(list), elem); }
+void list_push_front(struct list *list, struct list_elem *elem) {
+  list_insert(list_begin(list), elem);
+}
 
 /* Inserts ELEM at the end of LIST, so that it becomes the
    back in LIST. */
-void list_push_back(struct list *list, struct list_elem *elem) { list_insert(list_end(list), elem); }
+void list_push_back(struct list *list, struct list_elem *elem) {
+  list_insert(list_end(list), elem);
+}
 
 /* Removes ELEM from its list and returns the element that
    followed it.  Undefined behavior if ELEM is not in a list.
@@ -293,7 +302,8 @@ static bool is_sorted(struct list_elem *a, struct list_elem *b, list_less_func *
    given auxiliary data AUX.  Returns the (exclusive) end of the
    run.
    A through B (exclusive) must form a non-empty range. */
-static struct list_elem *find_end_of_run(struct list_elem *a, struct list_elem *b, list_less_func *less, void *aux) {
+static struct list_elem *find_end_of_run(struct list_elem *a, struct list_elem *b,
+                                         list_less_func *less, void *aux) {
   ASSERT(a != NULL);
   ASSERT(b != NULL);
   ASSERT(less != NULL);
@@ -310,8 +320,8 @@ static struct list_elem *find_end_of_run(struct list_elem *a, struct list_elem *
    (exclusive).  Both input ranges must be nonempty and sorted in
    nondecreasing order according to LESS given auxiliary data
    AUX.  The output range will be sorted the same way. */
-static void inplace_merge(struct list_elem *a0, struct list_elem *a1b0, struct list_elem *b1, list_less_func *less,
-                          void *aux) {
+static void inplace_merge(struct list_elem *a0, struct list_elem *a1b0, struct list_elem *b1,
+                          list_less_func *less, void *aux) {
   ASSERT(a0 != NULL);
   ASSERT(a1b0 != NULL);
   ASSERT(b1 != NULL);
@@ -366,7 +376,8 @@ void list_sort(struct list *list, list_less_func *less, void *aux) {
 /* Inserts ELEM in the proper position in LIST, which must be
    sorted according to LESS given auxiliary data AUX.
    Runs in O(n) average case in the number of elements in LIST. */
-void list_insert_ordered(struct list *list, struct list_elem *elem, list_less_func *less, void *aux) {
+void list_insert_ordered(struct list *list, struct list_elem *elem, list_less_func *less,
+                         void *aux) {
   struct list_elem *e;
 
   ASSERT(list != NULL);
@@ -427,3 +438,6 @@ struct list_elem *list_min(struct list *list, list_less_func *less, void *aux) {
   }
   return min;
 }
+
+typedef void (*list_iter_func)(const struct list_elem *elem);
+void list_foreach(struct list *list, list_iter_func *iter, void *aux) {}

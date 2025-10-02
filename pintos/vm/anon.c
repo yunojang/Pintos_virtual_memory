@@ -3,7 +3,6 @@
 #include "devices/disk.h"
 #include "vm/vm.h"
 
-
 /* DO NOT MODIFY BELOW LINE */
 static struct disk *swap_disk;
 static bool anon_swap_in(struct page *page, void *kva);
@@ -43,4 +42,7 @@ static bool anon_swap_in(struct page *page, void *kva) {
 static bool anon_swap_out(struct page *page) { struct anon_page *anon_page = &page->anon; }
 
 /* Destroy the anonymous page. PAGE will be freed by the caller. */
-static void anon_destroy(struct page *page) { struct anon_page *anon_page = &page->anon; }
+static void anon_destroy(struct page *page) {
+  struct anon_page *anon_page = &page->anon;
+  // anon_page - 클린업 해야할때
+}
