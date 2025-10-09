@@ -62,6 +62,7 @@ void syscall_init(void) {
 
 /* The main system call interface */
 void syscall_handler(struct intr_frame *f UNUSED) {
+  thread_current()->ursp = f->rsp;
   // TODO: Your implementation goes here.
   switch (f->R.rax) {
     case SYS_HALT:
@@ -141,7 +142,9 @@ void system_exit(int status) {
   printf("%s: exit(%d)\n", curr->name, status);
   thread_exit();
 }
-static pid_t system_fork(const char *thread_name, struct intr_frame *f) { return process_fork(thread_name, f); }
+static pid_t system_fork(const char *thread_name, struct intr_frame *f) {
+  return process_fork(thread_name, f);
+}
 static int system_exec(const char *cmdd_line) {
   validate_user_string(cmdd_line);
   int result = process_exec(cmdd_line);
@@ -159,15 +162,15 @@ static bool system_create(const char *file, unsigned initial_size) {
   return result;  // 파일 생성이 성공적이면 true, 아니면 false
 }
 static bool system_remove(const char *file) {
-  validate_user_string(file);          // file이 널 문자인지, 혹은 페이지 테이블에 없는 주소인지
+  validate_user_string(file);  // file이 널 문자인지, 혹은 페이지 테이블에 없는 주소인지
   lock_acquire(&filesys_lock);         // 동시접근을 막기 위해
   bool result = filesys_remove(file);  // 파일 삭제
   lock_release(&filesys_lock);
   return result;  // 파일 삭제가 성공적이면 true, 아니면 false
 }
 static int system_open(const char *file) {
-  validate_user_string(file);   // file 이 널문자인지, 혹은 페이지 테이블에 없는 주소인지
-  lock_acquire(&filesys_lock);  // 동시접근을 막기 위해
+  validate_user_string(file);  // file 이 널문자인지, 혹은 페이지 테이블에 없는 주소인지
+  lock_acquire(&filesys_lock);                  // 동시접근을 막기 위해
   struct file *open_file = filesys_open(file);  // 파일 열기
   lock_release(&filesys_lock);
   if (!open_file) return -1;  //파일 열기 실패 시 종료
@@ -198,15 +201,17 @@ static int system_open(const char *file) {
 
   curr->fd_table[new_fd] = open_file;
   // rox 구현
-  if (!strcmp(curr->name, file)) file_deny_write(open_file);  // 본인 자신을 열려고 하면 deny_write 설정
+  if (!strcmp(curr->name, file))
+    file_deny_write(open_file);  // 본인 자신을 열려고 하면 deny_write 설정
 
   return new_fd;
 }
 static int system_filesize(int fd) {
   struct thread *curr = thread_current();
   if (fd < 0 || fd >= curr->fd_size) return -1;  // fd가 유효하지 않은 숫자일 경우
-  if (curr->fd_table[fd] == get_std_in() || curr->fd_table[fd] == get_std_out())  // 표준 입출력일 경우
-    return -1;                                                                    // -1 리턴하고 종료
+  if (curr->fd_table[fd] == get_std_in() ||
+      curr->fd_table[fd] == get_std_out())  // 표준 입출력일 경우
+    return -1;                              // -1 리턴하고 종료
   int file_size = -1;        //해당 fd에 파일이 없을때 -1 리턴하기 위해
   if (curr->fd_table[fd]) {  //해당 fd에 파일이 있다면
     lock_acquire(&filesys_lock);
@@ -289,9 +294,10 @@ void system_close(int fd) {
   struct file *close_file = curr->fd_table[fd];
   if (!close_file) return;  // fd size 이내의 숫자이지만 열린 fd가 아니라면 리턴
 
-  if (curr->fd_table[fd] != get_std_in() && curr->fd_table[fd] != get_std_out()) {  // 표준 입출력이 아닐 경우
-    if (close_file->dup_count >= 2) {  // 누군가 dup2 되어있을 경우
-      close_file->dup_count--;         // dup_count만 내려줍니다.
+  if (curr->fd_table[fd] != get_std_in() &&
+      curr->fd_table[fd] != get_std_out()) {  // 표준 입출력이 아닐 경우
+    if (close_file->dup_count >= 2) {         // 누군가 dup2 되어있을 경우
+      close_file->dup_count--;                // dup_count만 내려줍니다.
     } else {
       lock_acquire(&filesys_lock);  // 동시접근을 막기 위해
       file_close(close_file);       // file 닫아주기
@@ -334,20 +340,30 @@ static void validate_user_string(const char *str) {
   if (str == NULL || !is_user_vaddr(str)) {  //주소가 NULL이거나, kernel 영역이거나
     system_exit(-1);                         // 종료
   }
-  if (pml4_get_page(thread_current()->pml4, str) == NULL) {  // 해당 프로세스의 page테이블에 등록되어 있지 않는 주소라면
-    system_exit(-1);                                         //종료
+
+#ifdef VM
+  // 페이지테이블에도 없고, 스택 성장도 불가하면 종료
+  if (spt_find_page(&thread_current()->spt, str) == NULL && !valid_stack_growth(str, NULL, false)) {
+    system_exit(-1);  //종료
   }
+#else
+  // 해당 프로세스의 page테이블에 등록되어 있지 않는 주소라면
+  if (pml4_get_page(thread_current()->pml4, str) == NULL) {
+    system_exit(-1);  //종료
+  }
+#endif
 }
 static int expend_fd_table(struct thread *curr, size_t size) {  // MAXFILES의 배수로 ㄱㄱ
   // if (curr->fd_size >= 512) return -1;                          //크기 제한
   size_t size_cnt = size / MAX_FILES + 1;
   size_t expend_size = size_cnt * MAX_FILES;
   // MAX_FILES의 배수만큼만 확장
-  struct file **new_table =
-      (struct file **)calloc((curr->fd_size + expend_size), sizeof(struct file *));  //새로 이사갈 주소
-  if (new_table == NULL) return -1;                                                  //재할당에 실패했을 경우
-  memcpy(new_table, curr->fd_table, curr->fd_size * sizeof(struct file *));          // 메모리 이사(값 옮기기)
-  free(curr->fd_table);                                                              // 기존에 있던 곳 free
+  struct file **new_table = (struct file **)calloc((curr->fd_size + expend_size),
+                                                   sizeof(struct file *));  //새로 이사갈 주소
+  if (new_table == NULL) return -1;  //재할당에 실패했을 경우
+  memcpy(new_table, curr->fd_table,
+         curr->fd_size * sizeof(struct file *));  // 메모리 이사(값 옮기기)
+  free(curr->fd_table);                           // 기존에 있던 곳 free
   curr->fd_table = new_table;
   curr->fd_size += expend_size;
   return 0;  // 성공적일 경우 0반환

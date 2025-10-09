@@ -92,4 +92,6 @@ void vm_dealloc_page(struct page *page);
 bool vm_claim_page(void *va);
 enum vm_type page_get_type(struct page *page);
 
+bool valid_stack_growth(void *va, struct intr_frame *f, bool user);
+
 #endif /* VM_VM_H */

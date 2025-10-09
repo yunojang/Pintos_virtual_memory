@@ -145,10 +145,21 @@ static struct frame *vm_get_frame(void) {
 }
 
 /* Growing the stack. */
-static void vm_stack_growth(void *addr UNUSED) {}
+static bool vm_stack_growth(void *addr UNUSED) {
+  bool succ;
+  if (!vm_alloc_page(VM_ANON | VM_MARKER_0, addr, true)) return false;
+  return vm_claim_page(addr);
+}
 
 /* Handle the fault on write_protected page */
 static bool vm_handle_wp(struct page *page UNUSED) {}
+
+bool valid_stack_growth(void *va, struct intr_frame *f, bool user) {
+  // u -> k 때만 프레임 저장, 커널 발생 fault는 rsp 별도 처리
+  uintptr_t rsp = user ? f->rsp : thread_current()->ursp;
+  bool near_rsp = va >= rsp - 8;
+  return (va < USER_STACK) && near_rsp && (va >= MIN_STACK_ADDR);
+}
 
 /* Return true on success */
 bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED, bool user UNUSED,
@@ -157,18 +168,17 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED, bool us
   struct page *page = NULL;
   /* TODO: Validate the fault */
   /* TODO: Your code goes here */
-  if (!user) return false;                                 // 유저 모드에서만 처리
-  if (addr == NULL || !is_user_vaddr(addr)) return false;  // addr valid - 유저 VA가 아닐때
+  if (addr == NULL || !is_user_vaddr(addr)) return false;  // addr valid
   if (!not_present) return false;                          // 보호 위반 여부
 
   void *va = pg_round_down(addr);
   page = spt_find_page(&thread_current()->spt, va);
-  if (!page) return false;  // SPT에 페이지 없음
 
-  //  스택 성장 처리
-
-  if (write && !page->writable) return false;  // write 동작인데 페이지가 지원안할 때
-
+  if (!page) {
+    if (!valid_stack_growth(addr, f, user)) return false;  //  스택 성장 가능 체크
+    return vm_stack_growth(va);                            // stack growth
+  }
+  if (write && !page->writable) return false;  // write 동작에, 페이지가 지원안할 때
   return vm_do_claim_page(page);
 }
 
