@@ -31,7 +31,9 @@ static void system_seek(int fd, unsigned position);
 static unsigned system_tell(int fd);
 static int system_dup2(int oldfd, int newfd);
 
-static void validate_user_string(const char *str);
+// static bool has_page(const char *buf);
+static bool validate_page_write(const char *buf);
+static void validate_user_addr(const char *str);
 static int expend_fd_table(struct thread *curr, size_t size);
 
 /* System call.
@@ -146,7 +148,7 @@ static pid_t system_fork(const char *thread_name, struct intr_frame *f) {
   return process_fork(thread_name, f);
 }
 static int system_exec(const char *cmdd_line) {
-  validate_user_string(cmdd_line);
+  validate_user_addr(cmdd_line);
   int result = process_exec(cmdd_line);
   system_exit(result);
   // never reached!!
@@ -154,7 +156,7 @@ static int system_exec(const char *cmdd_line) {
 }
 static int system_wait(pid_t pid) { return process_wait(pid); }
 static bool system_create(const char *file, unsigned initial_size) {
-  validate_user_string(file);  // file이 널 문자인지, 혹은 페이지 테이블에 없는 주소인지
+  validate_user_addr(file);  // file이 널 문자인지, 혹은 페이지 테이블에 없는 주소인지
   // 대신에 락이 걸려야함
   lock_acquire(&filesys_lock);                       // 동시접근을 막기 위해
   bool result = filesys_create(file, initial_size);  // 파일 생성
@@ -162,14 +164,14 @@ static bool system_create(const char *file, unsigned initial_size) {
   return result;  // 파일 생성이 성공적이면 true, 아니면 false
 }
 static bool system_remove(const char *file) {
-  validate_user_string(file);  // file이 널 문자인지, 혹은 페이지 테이블에 없는 주소인지
+  validate_user_addr(file);  // file이 널 문자인지, 혹은 페이지 테이블에 없는 주소인지
   lock_acquire(&filesys_lock);         // 동시접근을 막기 위해
   bool result = filesys_remove(file);  // 파일 삭제
   lock_release(&filesys_lock);
   return result;  // 파일 삭제가 성공적이면 true, 아니면 false
 }
 static int system_open(const char *file) {
-  validate_user_string(file);  // file 이 널문자인지, 혹은 페이지 테이블에 없는 주소인지
+  validate_user_addr(file);  // file 이 널문자인지, 혹은 페이지 테이블에 없는 주소인지
   lock_acquire(&filesys_lock);                  // 동시접근을 막기 위해
   struct file *open_file = filesys_open(file);  // 파일 열기
   lock_release(&filesys_lock);
@@ -223,7 +225,8 @@ static int system_filesize(int fd) {
 static int system_read(int fd, void *buffer, unsigned size) {
   struct thread *curr = thread_current();
   if (fd < 0 || fd >= curr->fd_size) return -1;  // fd가 유효하지 않은 숫자일 경우
-  validate_user_string(buffer);
+  validate_user_addr(buffer);
+  validate_page_write(buffer);
 
   int read_bytes;
   if (curr->fd_table[fd] == get_std_in()) {  //표준입력인 경우
@@ -243,7 +246,7 @@ static int system_read(int fd, void *buffer, unsigned size) {
 static int system_write(int fd, const void *buffer, unsigned size) {
   struct thread *curr = thread_current();
   if (fd < 0 || fd >= curr->fd_size) return -1;  // fd가 유효하지 않은 숫자일 경우
-  validate_user_string(buffer);
+  validate_user_addr(buffer);
 
   if (curr->fd_table[fd] == get_std_out()) {  // 표준 출력일 경우
     putbuf(buffer, size);
@@ -336,16 +339,30 @@ static int system_dup2(int oldfd, int newfd) {
   return newfd;
 }
 
-static void validate_user_string(const char *str) {
-  if (str == NULL || !is_user_vaddr(str)) {  //주소가 NULL이거나, kernel 영역이거나
-    system_exit(-1);                         // 종료
+// static bool has_page(const char *buf) { return spt_find_page(&thread_current()->spt, buf) !=
+// NULL; }
+
+static bool validate_page_write(const char *buf) {
+  struct page *p = spt_find_page(&thread_current()->spt, buf);
+  bool has_page = p != NULL;
+  if (has_page && !p->writable) {  // 테이블에 있으나 쓰기 불가하면 종료
+    system_exit(-1);
+  }
+}
+
+static void validate_user_addr(const char *addr) {
+  if (addr == NULL || !is_user_vaddr(addr)) {  //주소가 NULL이거나, kernel 영역이거나
+    system_exit(-1);                           // 종료
   }
 
 #ifdef VM
+  struct page *p = spt_find_page(&thread_current()->spt, addr);
+  bool has_page = p != NULL;
   // 페이지테이블에도 없고, 스택 성장도 불가하면 종료
-  if (spt_find_page(&thread_current()->spt, str) == NULL && !valid_stack_growth(str, NULL, false)) {
+  if (!has_page && !valid_stack_growth(addr, NULL, false)) {
     system_exit(-1);  //종료
   }
+
 #else
   // 해당 프로세스의 page테이블에 등록되어 있지 않는 주소라면
   if (pml4_get_page(thread_current()->pml4, str) == NULL) {
