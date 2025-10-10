@@ -146,7 +146,6 @@ static struct frame *vm_get_frame(void) {
 
 /* Growing the stack. */
 static bool vm_stack_growth(void *addr UNUSED) {
-  bool succ;
   if (!vm_alloc_page(VM_ANON | VM_MARKER_0, addr, true)) return false;
   return vm_claim_page(addr);
 }
@@ -154,11 +153,11 @@ static bool vm_stack_growth(void *addr UNUSED) {
 /* Handle the fault on write_protected page */
 static bool vm_handle_wp(struct page *page UNUSED) {}
 
-bool valid_stack_growth(void *va, struct intr_frame *f, bool user) {
+bool valid_stack_growth(void *addr, struct intr_frame *f, bool user) {
   // u -> k 때만 프레임 저장, 커널 발생 fault는 rsp 별도 처리
   uintptr_t rsp = user ? f->rsp : thread_current()->ursp;
-  bool near_rsp = va >= rsp - 8;
-  return (va < USER_STACK) && near_rsp && (va >= MIN_STACK_ADDR);
+  bool near_rsp = addr == rsp - 8 || addr >= rsp;
+  return (addr < USER_STACK) && near_rsp && (addr >= MIN_STACK_ADDR);
 }
 
 /* Return true on success */
