@@ -7,6 +7,9 @@ typedef int pid_t;
 
 extern struct lock filesys_lock; /* filesys 함수 접근 시 동기화 용 */
 
+#define STDIN_FD 0
+#define STDOUT_FD 1
+
 void syscall_init(void);
 void system_exit(int status);
 void system_close(int fd);

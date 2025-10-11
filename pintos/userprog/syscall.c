@@ -12,6 +12,7 @@
 #include "threads/thread.h"
 #include "userprog/gdt.h"
 #include "userprog/process.h"
+#include "vm/file.h"
 
 void syscall_entry(void);
 void syscall_handler(struct intr_frame *);
@@ -30,7 +31,8 @@ static int system_write(int fd, const void *buffer, unsigned size);
 static void system_seek(int fd, unsigned position);
 static unsigned system_tell(int fd);
 static int system_dup2(int oldfd, int newfd);
-
+static void *system_mmap(void *addr, size_t length, int writable, int fd, off_t offset);
+static void system_munmap(void *addr);
 // static bool has_page(const char *buf);
 static bool validate_page_write(const char *buf);
 static void validate_user_addr(const char *str);
@@ -112,12 +114,46 @@ void syscall_handler(struct intr_frame *f UNUSED) {
     case SYS_DUP2:
       f->R.rax = system_dup2(f->R.rdi, f->R.rsi);
       break;
+    case SYS_MMAP:
+      f->R.rax = system_mmap(f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r8);
+      break;
+    case SYS_MUNMAP:
+      system_munmap(f->R.rdi);
+      break;
     default:
       printf("unknown! %d\n", f->R.rax);
       thread_exit();
       break;
   }
 }
+
+static void *system_mmap(void *addr, size_t length, int writable, int fd, off_t offset) {
+  struct thread *cur = thread_current();
+
+  if (fd == STDIN_FD || fd == STDOUT_FD) return NULL;
+  struct file *file = cur->fd_table[fd];
+  bool file_empty = file == NULL || file_length(file) == 0;
+  bool is_not_round = addr != pg_round_down(addr);
+  bool already_mapped_page = spt_find_page(&cur->spt, addr);
+  bool invalid_addr =
+      is_not_round || already_mapped_page || addr == NULL || addr == 0 || !is_user_vaddr(addr);
+  bool zero_len = length == 0;
+  // 실패조건
+  if (invalid_addr || zero_len || file_empty) return NULL;
+
+  return do_mmap(addr, length, writable, file, offset);
+}
+
+static void system_munmap(void *addr) {
+  if (addr == NULL || pg_ofs(addr) != 0) return;
+
+  struct thread *t = thread_current();
+  struct mmap_desc *m = mmap_lookup(t, addr);
+  if (m == NULL) return;
+
+  do_munmap(m);
+}
+
 static void system_halt(void) { power_off(); }
 void system_exit(int status) {
   /* child_list에 종료되었음을 기록, status, has_exited 등 */

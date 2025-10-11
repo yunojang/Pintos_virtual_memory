@@ -441,3 +441,15 @@ struct list_elem *list_min(struct list *list, list_less_func *less, void *aux) {
 
 typedef void (*list_iter_func)(const struct list_elem *elem);
 void list_foreach(struct list *list, list_iter_func *iter, void *aux) {}
+
+struct list_elem *list_find(struct list *l, list_match_func match, void *aux) {
+  ASSERT(l != NULL);
+
+  struct list_elem *cur;
+  for (cur = list_begin(l); cur != list_end(l); cur = list_next(cur)) {
+    if (match(cur, aux)) {
+      return cur;
+    }
+  }
+  return NULL;
+}
