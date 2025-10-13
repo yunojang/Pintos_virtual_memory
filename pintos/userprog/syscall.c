@@ -133,13 +133,17 @@ static void *system_mmap(void *addr, size_t length, int writable, int fd, off_t 
   if (fd == STDIN_FD || fd == STDOUT_FD) return NULL;
   struct file *file = cur->fd_table[fd];
   bool file_empty = file == NULL || file_length(file) == 0;
+  if (file_empty) return NULL;
+
   bool is_not_round = addr != pg_round_down(addr);
   bool already_mapped_page = spt_find_page(&cur->spt, addr);
-  bool invalid_addr =
-      is_not_round || already_mapped_page || addr == NULL || addr == 0 || !is_user_vaddr(addr);
-  bool zero_len = length == 0;
+  bool invalid_len = length == 0 || (int64_t)length < 0;
+  bool invalid_addr = is_not_round || already_mapped_page || addr == NULL || addr == 0 ||
+                      !is_user_vaddr(addr) || !is_user_vaddr(addr + length) || addr + length < addr;
+  bool invalid_ofs = offset > length || offset > file_length(file);
+
   // 실패조건
-  if (invalid_addr || zero_len || file_empty) return NULL;
+  if (invalid_addr || invalid_len || invalid_ofs) return NULL;
 
   return do_mmap(addr, length, writable, file, offset);
 }

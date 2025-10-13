@@ -99,7 +99,12 @@ bool spt_insert_page(struct supplemental_page_table *spt UNUSED, struct page *pa
 }
 
 void spt_remove_page(struct supplemental_page_table *spt, struct page *page) {
-  vm_dealloc_page(page);
+  pml4_clear_page(thread_current()->pml4, page->va);  // pml4 매핑 해제 (by va)
+  palloc_free_page(page->frame->kva);                 // frame의 kva의 page_alloc 해제
+  free(page->frame);                                  // frame 객체 free
+  hash_delete(&spt->hash_table, &page->hash_elem);    // spt table hash 에서 제거
+  vm_dealloc_page(page);                              // dealloc_page flow
+
   return true;
 }
 

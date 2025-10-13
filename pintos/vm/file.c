@@ -2,6 +2,7 @@
 
 #include "include/threads/vaddr.h"
 #include "threads/malloc.h"
+#include "threads/mmu.h";
 #include "vm/vm.h"
 
 static bool file_backed_swap_in(struct page *page, void *kva);
@@ -42,9 +43,27 @@ static bool file_backed_swap_out(struct page *page) {
   struct file_page *file_page UNUSED = &page->file;
 }
 
+static bool set_dirty_file(struct thread *t, struct page *p) {
+  struct file_page *fp UNUSED = &p->file;
+
+  if ((file_write_at(fp->file, p->frame->kva, fp->read_bytes, fp->ofs)) != fp->read_bytes) {
+    return false;
+  }
+  pml4_set_dirty(t->pml4, p->va, false);
+
+  return true;
+}
+
 /* Destory the file backed page. PAGE will be freed by the caller. */
 static void file_backed_destroy(struct page *page) {
   struct file_page *file_page UNUSED = &page->file;
+
+  struct thread *t = thread_current();
+  struct pml4 *pml4 = t->pml4;
+
+  if (pml4_get_page(pml4, page->va) && pml4_is_dirty(pml4, page->va)) {
+    set_dirty_file(t, page);
+  }
 }
 
 static bool lazy_load_file(struct page *page, void *_aux) {
@@ -57,9 +76,11 @@ static bool lazy_load_file(struct page *page, void *_aux) {
   }
   memset(page->frame->kva + aux->read_bytes, 0, aux->zero_bytes);
 
+  page->file.file = aux->file;
+  page->file.ofs = aux->file_ofs;
+  page->file.read_bytes = aux->read_bytes;
+
   // hex_dump((intptr_t)page->frame->kva, page->frame->kva, aux->read_bytes, true);
-  // printf("ofs=%lld read=%zu zero=%zu\n", (long long)aux->file_ofs, aux->read_bytes,
-  //        aux->zero_bytes);
 
   free(aux);
   return true;
@@ -128,7 +149,8 @@ static bool find_start_va(const struct list_elem *elem, void *aux) {
 }
 
 struct mmap_desc *mmap_lookup(struct thread *t, void *addr) {
-  return list_find(&t->mmaps, find_start_va, addr);
+  struct list_elem *elem = list_find(&t->mmaps, find_start_va, addr);
+  return list_entry(elem, struct mmap_desc, elem);
 }
 
 /* Do the munmap */
@@ -136,8 +158,18 @@ void do_munmap(struct mmap_desc *desc) {
   struct thread *t = thread_current();
   void *va = desc->start;
 
-  // list_remove(list_find(&t->mmaps, find_start_va, va));
-  // spt_remove_page(&t->spt, spt_find_page(&t->spt, va));
+  list_remove(list_find(&t->mmaps, find_start_va, va));
+  off_t done = 0;
+  while (done < desc->length) {
+    struct page *p = spt_find_page(&t->spt, (char *)va + done);
 
+    // dirty write-back
+    if (pml4_is_dirty(t->pml4, va)) {
+      set_dirty_file(t, p);
+    }
+
+    spt_remove_page(&t->spt, p);
+    done += PGSIZE;
+  }
   file_close(desc->file);
 }

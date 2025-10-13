@@ -8,7 +8,11 @@
 // enum vm_type;
 struct thread;
 
-struct file_page {};
+struct file_page {
+  struct file *file;
+  off_t ofs;
+  size_t read_bytes;
+};
 
 struct mmap_desc {
   void *start;

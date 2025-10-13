@@ -51,12 +51,12 @@ static bool uninit_initialize(struct page *page, void *kva) {
   // 추후 uninit -> type에 마커가 섞일 수 있다.
   bool succ = true;
 
-  succ = uninit->page_initializer(page, uninit->type, kva);
+  succ = uninit->page_initializer(page, uninit->type, kva);  // page initializer
   if (!succ) {
     if (aux) free(aux);
     return false;
   }
-  succ = succ && (init ? init(page, aux) : true);
+  succ = succ && (init ? init(page, aux) : true);  // load data
 
   return succ;
 }
