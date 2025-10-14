@@ -30,6 +30,7 @@ struct page {
   /* Your implementation */
   struct hash_elem hash_elem;
   bool writable;
+  uint64_t *pml4;
 
   /* Per-type data are binded into the union.
    * Each function automatically detects the current union */
@@ -47,6 +48,9 @@ struct page {
 struct frame {
   void *kva;
   struct page *page;
+  bool pinned;
+  struct list_elem elem;
+  // uint64_t owners_pml4;
 };
 
 /* The function table for page operations.

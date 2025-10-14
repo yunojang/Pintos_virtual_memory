@@ -43,7 +43,7 @@ static bool file_backed_swap_out(struct page *page) {
   struct file_page *file_page UNUSED = &page->file;
 }
 
-static bool set_dirty_file(struct thread *t, struct page *p) {
+bool set_dirty_file(struct thread *t, struct page *p) {
   struct file_page *fp UNUSED = &p->file;
 
   if ((file_write_at(fp->file, p->frame->kva, fp->read_bytes, fp->ofs)) != fp->read_bytes) {

@@ -9,11 +9,19 @@
 #include "userprog/process.h"
 #include "vm/inspect.h"
 
+static struct list frame_table;
+static struct list_elem *clock_hand;
+static struct lock frame_lock;
+
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
 void vm_init(void) {
   vm_anon_init();
   vm_file_init();
+
+  list_init(&frame_table);
+  lock_init(&frame_lock);
+  clock_hand = list_begin(&frame_table);
 #ifdef EFILESYS /* For project 4 */
   pagecache_init();
 #endif
@@ -65,6 +73,7 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage, bool writabl
       return false;
     }
 
+    page->pml4 = thread_current()->pml4;
     page->writable = writable;
     spt_insert_page(spt, page);
 
@@ -98,54 +107,98 @@ bool spt_insert_page(struct supplemental_page_table *spt UNUSED, struct page *pa
   return succ;
 }
 
-void spt_remove_page(struct supplemental_page_table *spt, struct page *page) {
+static void frame_release(struct page *page) {
   pml4_clear_page(thread_current()->pml4, page->va);  // pml4 매핑 해제 (by va)
   palloc_free_page(page->frame->kva);                 // frame의 kva의 page_alloc 해제
   free(page->frame);                                  // frame 객체 free
-  hash_delete(&spt->hash_table, &page->hash_elem);    // spt table hash 에서 제거
-  vm_dealloc_page(page);                              // dealloc_page flow
+  page->frame = NULL;                                 // frame 포인터 지우기
+}
+
+void spt_remove_page(struct supplemental_page_table *spt, struct page *page) {
+  frame_release(page);                              // frame release
+  hash_delete(&spt->hash_table, &page->hash_elem);  // spt table hash 에서 제거 - 중요
+  vm_dealloc_page(page);                            // dealloc_page flow
 
   return true;
+}
+
+static struct frame *clock_next(void) {
+  if (list_end(&frame_table) != clock_hand) {
+    clock_hand = list_next(clock_hand);
+  } else {
+    clock_hand = list_begin(&frame_table);
+  }
+
+  struct frame *next = list_entry(clock_hand, struct frame, elem);
+  return next;
 }
 
 /* Get the struct frame, that will be evicted. */
 static struct frame *vm_get_victim(void) {
   struct frame *victim = NULL;
   /* TODO: The policy for eviction is up to you. */
+  while (true) {
+    victim = clock_next();
+    if (victim->pinned) continue;
 
-  return victim;
+    void *va = victim->page->va;
+    if (pml4_is_accessed(victim->page->pml4, va)) {
+      pml4_set_accessed(victim->page->pml4, va, false);  // 접근 비트 끄기
+      continue;                                          // second-chance
+    }
+    return victim;
+  }
 }
 
 /* Evict one page and return the corresponding frame.
  * Return NULL on error.*/
 static struct frame *vm_evict_frame(void) {
-  struct frame *victim UNUSED = vm_get_victim();
   /* TODO: swap out the victim and return the evicted frame. */
+  struct frame *victim = vm_get_victim();
+  bool succ;
 
-  return NULL;
+  victim->pinned = true;
+  succ = swap_out(victim->page);
+
+  pml4_clear_page(victim->page->pml4, victim->page->va);
+  victim->page->frame = NULL;
+  victim->page = NULL;
+
+  ASSERT(victim->page == NULL)
+
+  if (!succ) return NULL;
+  return victim;
 }
 
 /* palloc() and get frame. If there is no available page, evict the page
  * and return it. This always return valid address. That is, if the user pool
  * memory is full, this function evicts the frame to get the available memory
  * space.*/
+
 static struct frame *vm_get_frame(void) {
   struct frame *frame = NULL;
   /* TODO: Fill this function. */
 
   int8_t *kaddr = palloc_get_page(PAL_USER);
-  if (kaddr == NULL) {
-    PANIC("vm_get_frame: palloc_get_page(PAL_USER) failed (todo: eviction)");
-  }
-  if ((frame = malloc(sizeof *frame)) == NULL) {
-    PANIC("vm_get_frame:  malloc(sizeof *frame) failed");
-  }
+  if (kaddr == NULL) {  // palloc 실패 시 evict로 프레임 사용
+    if ((frame = vm_evict_frame()) == NULL) {
+      PANIC("vm_get_frame: vm_evict_frame() failed");
+    }
+  } else {  // 성공 시 새 프레임 구조체 할당 후 초기화
+    if ((frame = malloc(sizeof *frame)) == NULL) {
+      palloc_free_page(kaddr);
+      PANIC("vm_get_frame:  malloc(sizeof *frame) failed");
+    }
 
-  frame->kva = kaddr;
-  frame->page = NULL;
+    frame->kva = kaddr;
+    frame->page = NULL;
+    frame->pinned = true;
+    list_push_back(&frame_table, &frame->elem);  // 새 프레임은 테이블에
+  }
 
   ASSERT(frame != NULL);
   ASSERT(frame->page == NULL);
+
   return frame;
 }
 
@@ -214,6 +267,7 @@ static bool vm_do_claim_page(struct page *page) {
 
   /* TODO: Insert page table entry to map page's VA to frame's PA. */
   bool succ = pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable);
+  frame->pinned = false;
 
   if (!succ) {
     frame->page = NULL;
