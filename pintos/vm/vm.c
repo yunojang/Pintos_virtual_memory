@@ -115,7 +115,9 @@ static void frame_release(struct page *page) {
 }
 
 void spt_remove_page(struct supplemental_page_table *spt, struct page *page) {
-  frame_release(page);                              // frame release
+  if (page->frame != NULL) {
+    frame_release(page);  // frame release
+  }
   hash_delete(&spt->hash_table, &page->hash_elem);  // spt table hash 에서 제거 - 중요
   vm_dealloc_page(page);                            // dealloc_page flow
 

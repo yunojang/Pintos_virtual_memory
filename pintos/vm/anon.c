@@ -68,7 +68,6 @@ static bool anon_swap_out(struct page *page) {
     if (slot == BITMAP_ERROR) {
       return false;
     }
-
     anon_page->slot = slot;
   }
 

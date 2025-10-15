@@ -35,21 +35,36 @@ bool file_backed_initializer(struct page *page, enum vm_type type, void *kva) {
 
 /* Swap in the page by read contents from the file. */
 static bool file_backed_swap_in(struct page *page, void *kva) {
-  struct file_page *file_page UNUSED = &page->file;
+  struct file_page *fp UNUSED = &page->file;
+
+  if (file_read_at(fp->file, page->frame->kva, fp->read_bytes, fp->ofs) != (int)fp->read_bytes) {
+    return false;
+  }
+  memset(page->frame->kva + fp->read_bytes, 0, PGSIZE - fp->read_bytes);
+
+  // hex_dump((intptr_t)page->frame->kva, page->frame->kva, aux->read_bytes, true);
+  return true;
 }
 
 /* Swap out the page by writeback contents to the file. */
 static bool file_backed_swap_out(struct page *page) {
   struct file_page *file_page UNUSED = &page->file;
+
+  // memory to file
+  if (pml4_is_dirty(page->pml4, page->va)) {
+    return set_dirty_to_file(page->pml4, page);
+  }
+
+  return true;
 }
 
-bool set_dirty_file(struct thread *t, struct page *p) {
+bool set_dirty_to_file(uint64_t *pml4, struct page *p) {
   struct file_page *fp UNUSED = &p->file;
 
   if ((file_write_at(fp->file, p->frame->kva, fp->read_bytes, fp->ofs)) != fp->read_bytes) {
     return false;
   }
-  pml4_set_dirty(t->pml4, p->va, false);
+  pml4_set_dirty(pml4, p->va, false);
 
   return true;
 }
@@ -62,7 +77,7 @@ static void file_backed_destroy(struct page *page) {
   struct pml4 *pml4 = t->pml4;
 
   if (pml4_get_page(pml4, page->va) && pml4_is_dirty(pml4, page->va)) {
-    set_dirty_file(t, page);
+    set_dirty_to_file(pml4, page);
   }
 }
 
@@ -165,7 +180,7 @@ void do_munmap(struct mmap_desc *desc) {
 
     // dirty write-back
     if (pml4_is_dirty(t->pml4, va)) {
-      set_dirty_file(t, p);
+      set_dirty_to_file(t->pml4, p);
     }
 
     spt_remove_page(&t->spt, p);
