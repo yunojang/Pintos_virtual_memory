@@ -47,7 +47,6 @@ bool anon_initializer(struct page *page, enum vm_type type, void *kva) {
 static bool anon_swap_in(struct page *page, void *kva) {
   struct anon_page *anon_page = &page->anon;
 
-  vm_claim_page(page);
   // disk to memory
   disk_sector_t sec_base = SEC_NO(anon_page->slot);
   uint8_t *va = page->frame->kva;
@@ -63,13 +62,13 @@ static bool anon_swap_in(struct page *page, void *kva) {
 static bool anon_swap_out(struct page *page) {
   struct anon_page *anon_page = &page->anon;
 
-  if (anon_page->slot == BITMAP_ERROR) {
-    size_t slot = bitmap_scan_and_flip(swap_bitmap, 0, 1, false);
-    if (slot == BITMAP_ERROR) {
-      return false;
-    }
-    anon_page->slot = slot;
+  if (anon_page->slot != BITMAP_ERROR) return false;
+
+  size_t slot = bitmap_scan_and_flip(swap_bitmap, 0, 1, false);
+  if (slot == BITMAP_ERROR) {
+    return false;
   }
+  anon_page->slot = slot;
 
   // memory to disk
   disk_sector_t sec_base = SEC_NO(anon_page->slot);
@@ -78,9 +77,6 @@ static bool anon_swap_out(struct page *page) {
     size_t done = i * DISK_SECTOR_SIZE;
     disk_write(swap_disk, sec_base + i, va + done);
   }
-
-  // page frame clear -> 프레임 지우면 안되고 재사용해야함
-
   return true;
 }
 

@@ -166,7 +166,7 @@ static struct frame *vm_evict_frame(void) {
   victim->page->frame = NULL;
   victim->page = NULL;
 
-  ASSERT(victim->page == NULL)
+  ASSERT(victim->page == NULL);
 
   if (!succ) return NULL;
   return victim;
@@ -180,7 +180,6 @@ static struct frame *vm_evict_frame(void) {
 static struct frame *vm_get_frame(void) {
   struct frame *frame = NULL;
   /* TODO: Fill this function. */
-
   int8_t *kaddr = palloc_get_page(PAL_USER);
   if (kaddr == NULL) {  // palloc 실패 시 evict로 프레임 사용
     if ((frame = vm_evict_frame()) == NULL) {
